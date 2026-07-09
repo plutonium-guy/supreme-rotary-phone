@@ -3,7 +3,8 @@
 A small FastAPI framework laid out like a Django project: a central
 `config/` (settings + app factory), a `core/` runtime, and pluggable
 **apps** under `apps/`. Batteries: **Tortoise ORM**, **Aerich** migrations,
-**fastapi-admin**, **beartype** (runtime type-checking) and **loguru**.
+**fastadmin** (Django-style admin, no Redis), **beartype** (runtime
+type-checking) and **loguru**.
 
 ## Layout
 
@@ -12,7 +13,7 @@ config/            project configuration (Django's settings + wsgi)
   settings.py      pydantic-settings; holds INSTALLED_APPS
   app.py           create_app() factory: logging → apps → ORM → admin
   tortoise.py      TORTOISE_ORM built from INSTALLED_APPS (also used by Aerich)
-  admin.py         fastapi-admin mounting/configuration
+  admin.py         fastadmin mounting/configuration (JWT-cookie auth)
   logging.py       loguru + stdlib interception
 core/              framework internals
   __init__.py      installs the beartype import hook for apps/core/config
@@ -25,7 +26,7 @@ apps/              installed applications, one package each
     schemas.py     Pydantic in/out
     services.py    business logic (thin views)
     views.py       APIRouter -> auto-mounted at /api/users
-    admin.py       fastapi-admin resources
+    admin.py       fastadmin ModelAdmin registration
 manage.py          CLI: runserver / startapp / migrations / createadmin / shell
 main.py            ASGI entry point (uvicorn main:app)
 ```
@@ -39,7 +40,7 @@ main.py            ASGI entry point (uvicorn main:app)
 | app autodiscovery / registry   | `core.apps.AppRegistry`                 |
 | `models.py`                    | `apps/<app>/models.py` (Tortoise)       |
 | `views.py` + `urls.py`         | `apps/<app>/views.py` (`router`)        |
-| `admin.py`                     | `apps/<app>/admin.py` (fastapi-admin)   |
+| `admin.py` / `ModelAdmin`      | `apps/<app>/admin.py` (fastadmin)       |
 | `manage.py`                    | `manage.py`                             |
 | `makemigrations` / `migrate`   | Aerich wrappers in `manage.py`          |
 
@@ -62,12 +63,12 @@ pixi run runserver           # http://127.0.0.1:8000  (docs at /docs)
 Just start the server and open **http://127.0.0.1:8000/admin**, log in with
 **`admin` / `admin`**. No extra steps:
 
-- **No Redis required.** If the configured `REDIS_URL` is unreachable, the
-  admin transparently falls back to an in-memory fakeredis (sessions reset on
-  restart). Point `REDIS_URL` at a real Redis for persistent sessions.
+- **No Redis, no external services.** [fastadmin](https://github.com/vsdudakov/fastadmin)
+  keeps its session in a signed JWT http-only cookie (`ADMIN_SECRET_KEY`).
 - **Superuser auto-created** on startup from `ADMIN_USERNAME` /
   `ADMIN_PASSWORD` (change these in `.env` for anything real; set
-  `ADMIN_AUTO_CREATE=false` to disable).
+  `ADMIN_AUTO_CREATE=false` to disable). Auth is handled by the
+  `AdminUser` `ModelAdmin` (`authenticate` / `change_password`, bcrypt).
 - **Models show up automatically.** Each app registers its models in one line
   in `apps/<app>/admin.py`:
 
@@ -75,11 +76,14 @@ Just start the server and open **http://127.0.0.1:8000/admin**, log in with
   from core.admin import register_model
   from apps.blog.models import Post
 
-  register_model(Post, label="Posts", icon="fas fa-newspaper")
+  register_model(Post, list_display=("id", "title", "created_at"),
+                 search_fields=("title",))
   ```
 
   …or **delete `admin.py`** entirely and the framework auto-registers every
   model the app defines (secret columns like `password` are hidden by default).
+  For full control, subclass `fastadmin.TortoiseModelAdmin` and use
+  `@fastadmin.register(Model)` directly (see `apps/users/admin.py`).
 
 Create additional superusers from the CLI any time:
 

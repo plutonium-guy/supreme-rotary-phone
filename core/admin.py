@@ -1,14 +1,16 @@
-"""Django-``admin.site.register`` style helpers for fastapi-admin.
+"""Django-``admin.site.register`` style helpers for **fastadmin**.
 
-Instead of writing a full ``Model`` resource class per model, an app can do::
+fastadmin already uses the Django admin idiom (``ModelAdmin`` subclasses with
+``list_display`` etc.). These helpers let an app register a model with one
+line, or register nothing and get a sensible default::
 
     from core.admin import register_model
     from apps.blog.models import Post
 
-    register_model(Post, icon="fas fa-newspaper")
+    register_model(Post, list_display=("id", "title", "created_at"))
 
-or write no ``admin.py`` at all — :func:`autoregister_models` builds a
-sensible default resource for every model the app defines.
+For full control, subclass ``fastadmin.TortoiseModelAdmin`` yourself and call
+``fastadmin.register(Model)`` — see ``apps/users/admin.py``.
 """
 
 from __future__ import annotations
@@ -16,65 +18,59 @@ from __future__ import annotations
 import importlib
 import inspect
 
-from fastapi_admin.app import app as admin_app
-from fastapi_admin.resources import Link, Model
+from fastadmin import TortoiseModelAdmin, register_admin_model_class
 from loguru import logger
 from tortoise.models import Model as TortoiseModel
 
-#: Column names never shown in the dashboard (secrets).
+#: Column names never shown/edited in the dashboard (secrets).
 HIDDEN_FIELDS: set[str] = {"password", "hashed_password"}
 
 #: Guard against registering the same model twice across reloads.
 _registered: set[str] = set()
 
 
+def _visible_columns(model: type[TortoiseModel], exclude: set[str]) -> list[str]:
+    return [name for name in model._meta.fields_db_projection if name not in exclude]
+
+
 def register_model(
     model: type[TortoiseModel],
     *,
-    label: str | None = None,
-    icon: str = "fas fa-table",
+    list_display: tuple[str, ...] | None = None,
+    search_fields: tuple[str, ...] = (),
+    list_filter: tuple[str, ...] = (),
     exclude: tuple[str, ...] = (),
-    fields: list[str] | None = None,
-) -> type[Model] | None:
-    """Register ``model`` with the admin using sensible defaults.
+    admin_base: type[TortoiseModelAdmin] = TortoiseModelAdmin,
+    **attrs,
+) -> type[TortoiseModelAdmin] | None:
+    """Register ``model`` with a generated ``TortoiseModelAdmin``.
 
-    Field list defaults to every concrete column minus :data:`HIDDEN_FIELDS`
-    and ``exclude``. Returns the generated resource class (or ``None`` if the
-    model was already registered).
+    ``list_display`` defaults to every concrete column minus :data:`HIDDEN_FIELDS`
+    and ``exclude``. Secret columns are also kept out of the edit form. Extra
+    ``ModelAdmin`` attributes can be passed as keyword arguments.
+    Returns the generated admin class (or ``None`` if already registered).
     """
     if model.__name__ in _registered:
         return None
 
-    hide = HIDDEN_FIELDS | set(exclude)
-    field_names = fields or [
-        name for name in model._meta.fields_db_projection if name not in hide
-    ]
+    hidden = HIDDEN_FIELDS | set(exclude)
+    display = list_display or tuple(_visible_columns(model, hidden))
 
-    resource = type(
-        f"{model.__name__}Resource",
-        (Model,),
+    admin_cls = type(
+        f"{model.__name__}Admin",
+        (admin_base,),
         {
-            "label": label or f"{model.__name__}s",
-            "model": model,
-            "icon": icon,
-            "page_title": label or model.__name__,
-            "fields": list(field_names),
+            "list_display": display,
+            "search_fields": search_fields,
+            "list_filter": list_filter,
+            "exclude": tuple(hidden),
+            **attrs,
         },
     )
-    admin_app.register(resource)
+    register_admin_model_class(admin_cls, [model])
     _registered.add(model.__name__)
     logger.debug("Admin: registered model '{}'", model.__name__)
-    return resource
-
-
-def add_link(label: str, url: str, *, icon: str = "fas fa-link", target: str = "_self") -> None:
-    """Add a top-level menu link to the dashboard sidebar."""
-    resource = type(
-        f"{label.replace(' ', '')}Link",
-        (Link,),
-        {"label": label, "url": url, "icon": icon, "target": target},
-    )
-    admin_app.register(resource)
+    return admin_cls
 
 
 def autoregister_models(models_module_path: str) -> None:

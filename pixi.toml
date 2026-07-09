@@ -18,21 +18,18 @@ python = "3.11.*"
 uvicorn = "*"
 
 [pypi-dependencies]
-# fastapi-admin targets the Starlette 0.27 template API; pin the compatible
-# FastAPI/Starlette era so the admin login page renders.
-fastapi = "==0.103.2"
-starlette = "==0.27.0"
+fastapi = ">=0.110"
 tortoise-orm = ">=0.21"
 asyncpg = ">=0.29"
 aiosqlite = ">=0.19"
 aerich = ">=0.7"
-fastapi-admin = { git = "https://github.com/fastapi-admin/fastapi-admin.git", branch = "dev" }
-redis = ">=5.0"
-fakeredis = ">=2.20"
+# fastadmin: Django-admin-style panel with native Tortoise support and
+# JWT-cookie sessions (no Redis).
+fastadmin = ">=0.2.22, <0.3"
 beartype = ">=0.18"
 loguru = ">=0.7"
 pydantic-settings = ">=2.2"
 email-validator = ">=2.0"
-httpx = ">=0.24,<0.28"
+httpx = ">=0.27"
 python-dotenv = ">=1.0"
 bcrypt = ">=4.0"

@@ -58,10 +58,10 @@ async def ensure_admin_user(
 ) -> tuple[AdminUser, bool]:
     """Create the admin superuser if it does not already exist.
 
-    Returns ``(admin, created)``. When ``prehash`` is False the raw password
-    is stored and fastapi-admin's ``pre_save`` signal hashes it (use this once
-    the admin app is configured). When True we hash here — for standalone use
-    (e.g. ``manage.py createadmin``) where that signal is not registered.
+    Returns ``(admin, created)``. Pass ``prehash=True`` to bcrypt-hash the
+    password before storing (the dashboard's ``authenticate`` verifies with
+    bcrypt). ``prehash=False`` stores the raw value — only useful if the
+    caller hashes separately.
     """
     existing = await AdminUser.get_or_none(username=username)
     if existing:

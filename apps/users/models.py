@@ -24,7 +24,7 @@ class User(TimestampedModel):
 
 
 class AdminUser(TimestampedModel):
-    """Superuser record backing the fastapi-admin login provider."""
+    """Superuser record backing the admin dashboard login (fastadmin)."""
 
     username = fields.CharField(max_length=64, unique=True)
     password = fields.CharField(max_length=255)

@@ -1,7 +1,8 @@
 """Tortoise ORM configuration derived from ``INSTALLED_APPS``.
 
-``TORTOISE_ORM`` is consumed both by the running app (``register_tortoise``)
-and by Aerich for migrations, so ``manage.py`` and ``aerich.ini`` stay in sync.
+``TORTOISE_ORM`` is consumed both by the running app (``RegisterTortoise`` in
+the lifespan) and by Aerich for migrations, so ``manage.py`` and ``aerich.ini``
+stay in sync.
 """
 
 from __future__ import annotations

@@ -40,15 +40,28 @@ class Settings(BaseSettings):
     # Any Tortoise-supported URL. Defaults to sqlite for zero-config dev.
     DATABASE_URL: str = f"sqlite://{BASE_DIR / 'db.sqlite3'}"
 
-    # --- fastapi-admin --------------------------------------------------
-    REDIS_URL: str = "redis://localhost:6379/0"
-    ADMIN_PATH: str = "/admin"
-    ADMIN_TITLE: str = "fastAPI_api Admin"
+    # --- Admin dashboard (fastadmin — no Redis) -------------------------
+    ADMIN_PREFIX: str = "admin"  # mounted at /<ADMIN_PREFIX>
+    ADMIN_SITE_NAME: str = "fastAPI_api Admin"
+    # ORM model (by class name) used for admin authentication + its username
+    # field. Its ModelAdmin must implement ``authenticate``/``change_password``.
+    ADMIN_USER_MODEL: str = "AdminUser"
+    ADMIN_USER_MODEL_USERNAME_FIELD: str = "username"
+    # Secret for signing the admin session JWT. Defaults to SECRET_KEY.
+    ADMIN_SECRET_KEY: str = ""
     # A superuser is auto-created on startup from these so the dashboard is
     # usable immediately (no manual ``createadmin`` step). Change in prod.
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin"
     ADMIN_AUTO_CREATE: bool = True
+
+    @property
+    def admin_path(self) -> str:
+        return f"/{self.ADMIN_PREFIX.strip('/')}"
+
+    @property
+    def admin_secret(self) -> str:
+        return self.ADMIN_SECRET_KEY or self.SECRET_KEY
 
     # --- Logging --------------------------------------------------------
     LOG_LEVEL: str = "DEBUG"

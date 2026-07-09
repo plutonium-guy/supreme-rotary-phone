@@ -111,7 +111,7 @@ _APP_TEMPLATE: dict[str, str] = {
     ),
     "admin.py": dedent(
         '''\
-        """Admin registration for the {name} app.
+        """Admin registration for the {name} app (fastadmin).
 
         One line per model. Delete this file to auto-register every model
         the app defines. See ``core.admin.register_model`` for options.
@@ -121,7 +121,7 @@ _APP_TEMPLATE: dict[str, str] = {
 
         from apps.{name}.models import {cls}
 
-        register_model({cls}, label="{title}", icon="fas fa-table")
+        register_model({cls}, list_display=("id", "name"), search_fields=("name",))
         '''
     ),
 }
