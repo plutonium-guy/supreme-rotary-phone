@@ -14,19 +14,19 @@ from apps.users.schemas import UserCreate, UserOut, UserUpdate
 router = APIRouter()
 
 
-@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED, operation_id="users_create")
 async def create_user(payload: UserCreate) -> UserOut:
     user = await services.create_user(payload)
     return UserOut.model_validate(user)
 
 
-@router.get("", response_model=list[UserOut])
+@router.get("", response_model=list[UserOut], operation_id="users_list")
 async def list_users(limit: int = 100, offset: int = 0) -> list[UserOut]:
     users = await services.list_users(limit=limit, offset=offset)
     return [UserOut.model_validate(u) for u in users]
 
 
-@router.get("/{user_id}", response_model=UserOut)
+@router.get("/{user_id}", response_model=UserOut, operation_id="users_retrieve")
 async def retrieve_user(user_id: int) -> UserOut:
     user = await services.get_user(user_id)
     if user is None:
@@ -34,7 +34,7 @@ async def retrieve_user(user_id: int) -> UserOut:
     return UserOut.model_validate(user)
 
 
-@router.patch("/{user_id}", response_model=UserOut)
+@router.patch("/{user_id}", response_model=UserOut, operation_id="users_update")
 async def update_user(user_id: int, payload: UserUpdate) -> UserOut:
     user = await services.get_user(user_id)
     if user is None:
@@ -43,7 +43,7 @@ async def update_user(user_id: int, payload: UserUpdate) -> UserOut:
     return UserOut.model_validate(user)
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response, operation_id="users_delete")
 async def delete_user(user_id: int) -> Response:
     user = await services.get_user(user_id)
     if user is None:

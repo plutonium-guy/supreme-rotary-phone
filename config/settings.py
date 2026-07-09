@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # ``AppConfig`` in its ``apps.py``. Order matters for router mounting.
     INSTALLED_APPS: list[str] = [
         "apps.users",
+        "apps.mcp",
     ]
 
     # --- Database (Tortoise ORM) ----------------------------------------
@@ -62,6 +63,15 @@ class Settings(BaseSettings):
     @property
     def admin_secret(self) -> str:
         return self.ADMIN_SECRET_KEY or self.SECRET_KEY
+
+    # --- MCP server (fastapi-mcp) ---------------------------------------
+    # Exposes app views as MCP tools. Every app router is exposed by default;
+    # an app opts out with ``expose_mcp = False`` on its AppConfig, and these
+    # route tags are never exposed.
+    MCP_ENABLED: bool = True
+    MCP_MOUNT_PATH: str = "/mcp"
+    MCP_SERVER_NAME: str = "fastAPI_api MCP"
+    MCP_EXCLUDE_TAGS: list[str] = ["system", "admin", "mcp"]
 
     # --- Logging --------------------------------------------------------
     LOG_LEVEL: str = "DEBUG"

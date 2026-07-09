@@ -14,12 +14,14 @@ config/            project configuration (Django's settings + wsgi)
   app.py           create_app() factory: logging → apps → ORM → admin
   tortoise.py      TORTOISE_ORM built from INSTALLED_APPS (also used by Aerich)
   admin.py         fastadmin mounting/configuration (JWT-cookie auth)
+  mcp.py           MCP server: exposes app views as tools, mounted at /mcp
   logging.py       loguru + stdlib interception
 core/              framework internals
   __init__.py      installs the beartype import hook for apps/core/config
   apps.py          AppConfig + AppRegistry (autodiscovery)
   models.py        TimestampedModel abstract base
 apps/              installed applications, one package each
+  mcp/             MCPTool model + admin (mirror of exposed MCP tools)
   users/           sample app
     apps.py        AppConfig
     models.py      Tortoise models
@@ -89,6 +91,34 @@ Create additional superusers from the CLI any time:
 
 ```bash
 python manage.py createadmin alice s3cretpw --email alice@x.com
+```
+
+### MCP server — expose views as tools
+
+Every app view is automatically exposed as an [MCP](https://modelcontextprotocol.io)
+tool (via [fastapi-mcp](https://github.com/tadata-org/fastapi_mcp)), served at
+**`/mcp`** (streamable-HTTP). No per-view work beyond giving the route a stable
+`operation_id`:
+
+```python
+@router.get("/{user_id}", operation_id="users_retrieve")
+async def retrieve_user(user_id: int) -> UserOut: ...
+```
+
+- **Plug in any view.** The framework mounts each app router with
+  `tags=[<app label>]`, and fastapi-mcp turns those operations into tools that
+  call the real endpoints. Point any MCP client (Claude, etc.) at
+  `http://127.0.0.1:8000/mcp`.
+- **Opt an app out** with `expose_mcp = False` on its `AppConfig`; block tags
+  globally with `MCP_EXCLUDE_TAGS` (defaults exclude `system`, `admin`, `mcp`).
+- **Seen in the admin.** The live tool list is synced into the **`MCPTool`**
+  model on every startup, so it shows up in the dashboard (name, method, path,
+  input schema). Untick **enabled** on a tool to stop exposing it — applied on
+  the next restart. Disabled rows are preserved across syncs.
+
+```
+GET  /mcp    →  MCP endpoint (initialize / tools/list / tools/call)
+/admin  →  "MCP Tools" table lists every exposed tool
 ```
 
 ## Add an app

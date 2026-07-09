@@ -31,6 +31,8 @@ class AppConfig:
     label: str = ""
     #: Human-friendly name shown in the admin.
     verbose_name: str = ""
+    #: Whether this app's views are exposed as MCP tools. Set False to opt out.
+    expose_mcp: bool = True
 
     def __init__(self) -> None:
         if not self.name:

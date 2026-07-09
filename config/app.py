@@ -19,6 +19,7 @@ from tortoise.contrib.fastapi import RegisterTortoise
 
 from config.admin import configure_admin, mount_admin
 from config.logging import configure_logging
+from config.mcp import configure_mcp
 from config.settings import settings
 from config.tortoise import TORTOISE_ORM
 from core.apps import autodiscover
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI):
         add_exception_handlers=settings.DEBUG,
     ):
         await configure_admin()
+        await configure_mcp(app)
         yield
 
     logger.info("Shutting down '{}'", settings.PROJECT_NAME)

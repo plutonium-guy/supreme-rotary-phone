@@ -104,7 +104,7 @@ _APP_TEMPLATE: dict[str, str] = {
         router = APIRouter()
 
 
-        @router.get("")
+        @router.get("", operation_id="{name}_index")
         async def index() -> dict[str, str]:
             return {{"app": "{name}"}}
         '''
