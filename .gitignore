@@ -9,3 +9,4 @@ __pycache__/
 migrations/
 ._*
 .DS_Store
+db.sqlite3*
