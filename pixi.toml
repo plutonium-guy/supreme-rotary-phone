@@ -1,0 +1,38 @@
+[workspace]
+authors = ["amiya <amiya19mandal@gmail.com>"]
+channels = ["conda-forge"]
+name = "fastAPI_api"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+runserver = "python manage.py runserver"
+startapp = "python manage.py startapp"
+initdb = "python manage.py init-db"
+makemigrations = "python manage.py makemigrations"
+migrate = "python manage.py migrate"
+shell = "python manage.py shell"
+
+[dependencies]
+python = "3.11.*"
+uvicorn = "*"
+
+[pypi-dependencies]
+# fastapi-admin targets the Starlette 0.27 template API; pin the compatible
+# FastAPI/Starlette era so the admin login page renders.
+fastapi = "==0.103.2"
+starlette = "==0.27.0"
+tortoise-orm = ">=0.21"
+asyncpg = ">=0.29"
+aiosqlite = ">=0.19"
+aerich = ">=0.7"
+fastapi-admin = { git = "https://github.com/fastapi-admin/fastapi-admin.git", branch = "dev" }
+redis = ">=5.0"
+fakeredis = ">=2.20"
+beartype = ">=0.18"
+loguru = ">=0.7"
+pydantic-settings = ">=2.2"
+email-validator = ">=2.0"
+httpx = ">=0.24,<0.28"
+python-dotenv = ">=1.0"
+bcrypt = ">=4.0"
