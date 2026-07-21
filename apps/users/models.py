@@ -1,8 +1,14 @@
-"""Tortoise ORM models for the users app."""
+"""SQLAlchemy models for the users app (stored in Databricks).
+
+``unique=True`` below is emitted into the DDL but Delta treats key constraints
+as *informational only* — it will not reject a duplicate. Uniqueness is
+enforced in ``services.py`` with a read-before-write check.
+"""
 
 from __future__ import annotations
 
-from tortoise import fields
+from sqlalchemy import Boolean, String
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.models import TimestampedModel
 
@@ -10,14 +16,13 @@ from core.models import TimestampedModel
 class User(TimestampedModel):
     """An application end-user account."""
 
-    username = fields.CharField(max_length=64, unique=True)
-    email = fields.CharField(max_length=255, unique=True)
-    full_name = fields.CharField(max_length=255, null=True)
-    hashed_password = fields.CharField(max_length=255)
-    is_active = fields.BooleanField(default=True)
+    __tablename__ = "users"
 
-    class Meta:
-        table = "users"
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     def __str__(self) -> str:
         return self.username
@@ -26,14 +31,13 @@ class User(TimestampedModel):
 class AdminUser(TimestampedModel):
     """Superuser record backing the admin dashboard login (fastadmin)."""
 
-    username = fields.CharField(max_length=64, unique=True)
-    password = fields.CharField(max_length=255)
-    email = fields.CharField(max_length=255, null=True)
-    avatar = fields.CharField(max_length=255, default="")
-    is_superuser = fields.BooleanField(default=True)
+    __tablename__ = "admin_users"
 
-    class Meta:
-        table = "admin_users"
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    password: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar: Mapped[str] = mapped_column(String(255), default="")
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=True)
 
     def __str__(self) -> str:
         return self.username

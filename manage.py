@@ -4,11 +4,12 @@
 Commands:
     runserver [--host --port --reload]   Start the ASGI dev server.
     startapp <name>                      Scaffold a new app under ``apps/``.
-    init-db                              Create tables from models (dev only).
-    makemigrations                       Generate Aerich migrations.
-    migrate                              Apply Aerich migrations.
-    createadmin <username> <password>    Create a fastapi-admin superuser.
-    shell                                Async REPL with Tortoise initialised.
+    init-db                              Create tables in Databricks from models.
+    makemigrations                       Generate an Alembic revision.
+    migrate                              Apply Alembic migrations.
+    createadmin <username> <password>    Create an admin superuser.
+    dbshell                              Check connectivity, print catalog info.
+    shell                                REPL with a Databricks session ready.
 """
 
 from __future__ import annotations
@@ -60,20 +61,20 @@ _APP_TEMPLATE: dict[str, str] = {
     ),
     "models.py": dedent(
         '''\
-        """Tortoise ORM models for the {name} app."""
+        """SQLAlchemy models for the {name} app (stored in Databricks)."""
 
         from __future__ import annotations
 
-        from tortoise import fields
+        from sqlalchemy import String
+        from sqlalchemy.orm import Mapped, mapped_column
 
         from core.models import TimestampedModel
 
 
         class {cls}(TimestampedModel):
-            name = fields.CharField(max_length=255)
+            __tablename__ = "{name}"
 
-            class Meta:
-                table = "{name}"
+            name: Mapped[str] = mapped_column(String(255))
         '''
     ),
     "schemas.py": dedent(
@@ -88,7 +89,7 @@ _APP_TEMPLATE: dict[str, str] = {
         class {cls}Out(BaseModel):
             model_config = ConfigDict(from_attributes=True)
 
-            id: int
+            id: str
             name: str
         '''
     ),
@@ -149,55 +150,60 @@ def cmd_startapp(args: argparse.Namespace) -> None:
 # init-db (dev convenience — generate schemas directly from models)
 # --------------------------------------------------------------------------- #
 def cmd_init_db(_: argparse.Namespace) -> None:
-    from tortoise import Tortoise
+    from config.database import create_all
 
-    from config.tortoise import TORTOISE_ORM
-
-    async def _run() -> None:
-        await Tortoise.init(config=TORTOISE_ORM)
-        await Tortoise.generate_schemas()
-        await Tortoise.close_connections()
-        print("Database schema generated.")
-
-    asyncio.run(_run())
+    create_all()
 
 
 # --------------------------------------------------------------------------- #
-# aerich migration wrappers
+# alembic migration wrappers
 # --------------------------------------------------------------------------- #
-def _aerich(*aerich_args: str) -> None:
-    subprocess.run([sys.executable, "-m", "aerich", *aerich_args], check=True)
+def _alembic(*alembic_args: str) -> None:
+    subprocess.run(
+        [sys.executable, "-m", "alembic", *alembic_args], check=True, cwd=BASE_DIR
+    )
 
 
 def cmd_makemigrations(args: argparse.Namespace) -> None:
-    if not (BASE_DIR / "migrations").exists():
-        _aerich("init", "-t", "config.tortoise.TORTOISE_ORM")
-        _aerich("init-db")
-    else:
-        _aerich("migrate", *(["--name", args.name] if args.name else []))
+    _alembic("revision", "--autogenerate", "-m", args.name or "auto")
 
 
-def cmd_migrate(_: argparse.Namespace) -> None:
-    _aerich("upgrade")
+def cmd_migrate(args: argparse.Namespace) -> None:
+    _alembic("upgrade", args.revision)
+
+
+# --------------------------------------------------------------------------- #
+# dbshell — connectivity check
+# --------------------------------------------------------------------------- #
+def cmd_dbshell(_: argparse.Namespace) -> None:
+    from sqlalchemy import text
+
+    from config.settings import settings as s
+    from core.db import get_engine
+
+    with get_engine().connect() as conn:
+        current = conn.execute(
+            text("SELECT current_catalog(), current_schema(), current_user()")
+        ).one()
+        print(f"Connected to {s.DATABRICKS_SERVER_HOSTNAME}")
+        print(f"  catalog={current[0]}  schema={current[1]}  user={current[2]}")
+        tables = conn.execute(text("SHOW TABLES")).fetchall()
+        print(f"  {len(tables)} table(s): {', '.join(str(t[1]) for t in tables)}")
 
 
 # --------------------------------------------------------------------------- #
 # createadmin
 # --------------------------------------------------------------------------- #
 def cmd_createadmin(args: argparse.Namespace) -> None:
-    from tortoise import Tortoise
-
     from apps.users.services import ensure_admin_user
-    from config.tortoise import TORTOISE_ORM
+    from config.database import import_models
 
     async def _run() -> None:
-        await Tortoise.init(config=TORTOISE_ORM)
-        await Tortoise.generate_schemas()
+        import_models()
         # Standalone (no admin app configured), so hash here.
         admin, created = await ensure_admin_user(
             args.username, args.password, email=args.email, prehash=True
         )
-        await Tortoise.close_connections()
         print(f"Admin user '{admin.username}' {'created' if created else 'already exists'}.")
 
     asyncio.run(_run())
@@ -209,15 +215,23 @@ def cmd_createadmin(args: argparse.Namespace) -> None:
 def cmd_shell(_: argparse.Namespace) -> None:
     import code
 
-    from tortoise import Tortoise
+    from sqlalchemy import select
 
-    from config.tortoise import TORTOISE_ORM
+    from config.database import import_models
+    from core.db import get_engine, get_session_factory, run_db
 
-    async def _boot() -> None:
-        await Tortoise.init(config=TORTOISE_ORM)
-
-    asyncio.run(_boot())
-    code.interact(local={"Tortoise": Tortoise, "asyncio": asyncio})
+    import_models()
+    session = get_session_factory()()
+    print("Ready: session, select, run_db, engine (+ your models are imported).")
+    code.interact(
+        local={
+            "session": session,
+            "select": select,
+            "run_db": run_db,
+            "engine": get_engine(),
+            "asyncio": asyncio,
+        }
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -237,14 +251,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name")
     p.set_defaults(func=cmd_startapp)
 
-    p = sub.add_parser("init-db", help="Generate schema from models (dev)")
+    p = sub.add_parser("init-db", help="Create tables in Databricks from models")
     p.set_defaults(func=cmd_init_db)
 
-    p = sub.add_parser("makemigrations", help="Generate Aerich migrations")
+    p = sub.add_parser("makemigrations", help="Generate an Alembic revision")
     p.add_argument("--name", default=None)
     p.set_defaults(func=cmd_makemigrations)
 
-    p = sub.add_parser("migrate", help="Apply Aerich migrations")
+    p = sub.add_parser("migrate", help="Apply Alembic migrations")
+    p.add_argument("revision", nargs="?", default="head")
     p.set_defaults(func=cmd_migrate)
 
     p = sub.add_parser("createadmin", help="Create an admin superuser")
@@ -253,7 +268,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--email", default=None)
     p.set_defaults(func=cmd_createadmin)
 
-    p = sub.add_parser("shell", help="Async REPL with Tortoise initialised")
+    p = sub.add_parser("dbshell", help="Check Databricks connectivity")
+    p.set_defaults(func=cmd_dbshell)
+
+    p = sub.add_parser("shell", help="REPL with a Databricks session ready")
     p.set_defaults(func=cmd_shell)
 
     return parser

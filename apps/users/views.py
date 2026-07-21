@@ -1,7 +1,8 @@
 """HTTP routes for the users app (Django's ``views.py`` / ``urls.py``).
 
 The module-level ``router`` is auto-discovered and mounted at
-``/api/users`` by the app registry.
+``/api/users`` by the app registry. ``user_id`` is a UUID string, not an int —
+see ``core.models`` for why.
 """
 
 from __future__ import annotations
@@ -16,7 +17,10 @@ router = APIRouter()
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED, operation_id="users_create")
 async def create_user(payload: UserCreate) -> UserOut:
-    user = await services.create_user(payload)
+    try:
+        user = await services.create_user(payload)
+    except services.DuplicateUser as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return UserOut.model_validate(user)
 
 
@@ -27,7 +31,7 @@ async def list_users(limit: int = 100, offset: int = 0) -> list[UserOut]:
 
 
 @router.get("/{user_id}", response_model=UserOut, operation_id="users_retrieve")
-async def retrieve_user(user_id: int) -> UserOut:
+async def retrieve_user(user_id: str) -> UserOut:
     user = await services.get_user(user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -35,18 +39,15 @@ async def retrieve_user(user_id: int) -> UserOut:
 
 
 @router.patch("/{user_id}", response_model=UserOut, operation_id="users_update")
-async def update_user(user_id: int, payload: UserUpdate) -> UserOut:
-    user = await services.get_user(user_id)
+async def update_user(user_id: str, payload: UserUpdate) -> UserOut:
+    user = await services.update_user(user_id, payload)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
-    user = await services.update_user(user, payload)
     return UserOut.model_validate(user)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response, operation_id="users_delete")
-async def delete_user(user_id: int) -> Response:
-    user = await services.get_user(user_id)
-    if user is None:
+async def delete_user(user_id: str) -> Response:
+    if not await services.delete_user(user_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
-    await services.delete_user(user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

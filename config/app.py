@@ -13,35 +13,36 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+import asyncio
+
 from fastapi import FastAPI
 from loguru import logger
-from tortoise.contrib.fastapi import RegisterTortoise
 
 from config.admin import configure_admin, mount_admin
+from config.database import create_all, import_models
 from config.logging import configure_logging
-from config.mcp import configure_mcp
 from config.settings import settings
-from config.tortoise import TORTOISE_ORM
 from core.apps import autodiscover
+from core.db import dispose_engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting '{}' (debug={})", settings.PROJECT_NAME, settings.DEBUG)
 
-    # RegisterTortoise is the lifespan-native way to open connections so they
-    # remain visible to request handlers; it also closes them on shutdown.
-    async with RegisterTortoise(
-        app,
-        config=TORTOISE_ORM,
-        generate_schemas=settings.DEBUG,
-        add_exception_handlers=settings.DEBUG,
-    ):
-        await configure_admin()
-        await configure_mcp(app)
-        yield
+    # Populate Base.metadata before anything touches the ORM.
+    import_models()
+    if settings.DEBUG:
+        # Convenience only. Prefer Alembic migrations; creating tables costs
+        # several warehouse round-trips on every boot.
+        await asyncio.to_thread(create_all)
 
-    logger.info("Shutting down '{}'", settings.PROJECT_NAME)
+    try:
+        await configure_admin()
+        yield
+    finally:
+        await asyncio.to_thread(dispose_engine)
+        logger.info("Shutting down '{}'", settings.PROJECT_NAME)
 
 
 def create_app() -> FastAPI:

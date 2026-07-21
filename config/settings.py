@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote_plus, urlencode
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -34,12 +35,58 @@ class Settings(BaseSettings):
     # ``AppConfig`` in its ``apps.py``. Order matters for router mounting.
     INSTALLED_APPS: list[str] = [
         "apps.users",
-        "apps.mcp",
     ]
 
-    # --- Database (Tortoise ORM) ----------------------------------------
-    # Any Tortoise-supported URL. Defaults to sqlite for zero-config dev.
-    DATABASE_URL: str = f"sqlite://{BASE_DIR / 'db.sqlite3'}"
+    # --- Database (Databricks via SQLAlchemy) ---------------------------
+    # A Databricks SQL warehouse is the only datastore; there is no local
+    # fallback. Grab these from the warehouse's "Connection details" tab.
+    DATABRICKS_SERVER_HOSTNAME: str = ""  # e.g. dbc-1234.cloud.databricks.com
+    DATABRICKS_HTTP_PATH: str = ""  # e.g. /sql/1.0/warehouses/abc123
+    DATABRICKS_TOKEN: str = ""  # personal access token
+    DATABRICKS_CATALOG: str = "main"
+    DATABRICKS_SCHEMA: str = "default"
+
+    #: Escape hatch — set to a full SQLAlchemy URL to bypass the fields above.
+    DATABASE_URL: str = ""
+
+    # Connection pooling. Warehouse round-trips are slow (~0.2-2s), so each
+    # pooled connection is worth holding on to.
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
+    DB_POOL_RECYCLE: int = 3600
+    DB_ECHO: bool = False
+
+    @property
+    def database_url(self) -> str:
+        """Build the ``databricks://`` SQLAlchemy URL from the settings above."""
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+
+        missing = [
+            field
+            for field in (
+                "DATABRICKS_SERVER_HOSTNAME",
+                "DATABRICKS_HTTP_PATH",
+                "DATABRICKS_TOKEN",
+            )
+            if not getattr(self, field)
+        ]
+        if missing:
+            raise RuntimeError(
+                "Databricks is not configured — set "
+                + ", ".join(missing)
+                + " in .env (or set DATABASE_URL to a full SQLAlchemy URL)."
+            )
+
+        token = quote_plus(self.DATABRICKS_TOKEN)
+        query = urlencode(
+            {
+                "http_path": self.DATABRICKS_HTTP_PATH,
+                "catalog": self.DATABRICKS_CATALOG,
+                "schema": self.DATABRICKS_SCHEMA,
+            }
+        )
+        return f"databricks://token:{token}@{self.DATABRICKS_SERVER_HOSTNAME}?{query}"
 
     # --- Admin dashboard (fastadmin — no Redis) -------------------------
     ADMIN_PREFIX: str = "admin"  # mounted at /<ADMIN_PREFIX>
@@ -63,15 +110,6 @@ class Settings(BaseSettings):
     @property
     def admin_secret(self) -> str:
         return self.ADMIN_SECRET_KEY or self.SECRET_KEY
-
-    # --- MCP server (fastapi-mcp) ---------------------------------------
-    # Exposes app views as MCP tools. Every app router is exposed by default;
-    # an app opts out with ``expose_mcp = False`` on its AppConfig, and these
-    # route tags are never exposed.
-    MCP_ENABLED: bool = True
-    MCP_MOUNT_PATH: str = "/mcp"
-    MCP_SERVER_NAME: str = "fastAPI_api MCP"
-    MCP_EXCLUDE_TAGS: list[str] = ["system", "admin", "mcp"]
 
     # --- Logging --------------------------------------------------------
     LOG_LEVEL: str = "DEBUG"

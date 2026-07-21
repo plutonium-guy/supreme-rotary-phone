@@ -2,11 +2,8 @@
 .pixi/*
 !.pixi/config.toml
 logs/
-db.sqlite3
 .env
 __pycache__/
 *.pyc
-migrations/
 ._*
 .DS_Store
-db.sqlite3*

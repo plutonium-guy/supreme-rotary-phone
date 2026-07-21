@@ -11,6 +11,7 @@ startapp = "python manage.py startapp"
 initdb = "python manage.py init-db"
 makemigrations = "python manage.py makemigrations"
 migrate = "python manage.py migrate"
+dbshell = "python manage.py dbshell"
 shell = "python manage.py shell"
 
 [dependencies]
@@ -19,11 +20,7 @@ uvicorn = "*"
 
 [pypi-dependencies]
 fastapi = ">=0.110"
-tortoise-orm = ">=0.21"
-asyncpg = ">=0.29"
-aiosqlite = ">=0.19"
-aerich = ">=0.7"
-# fastadmin: Django-admin-style panel with native Tortoise support and
+# fastadmin: Django-admin-style panel with a SQLAlchemy backend and
 # JWT-cookie sessions (no Redis).
 fastadmin = ">=0.2.22, <0.3"
 beartype = ">=0.18"
@@ -33,4 +30,8 @@ email-validator = ">=2.0"
 httpx = ">=0.27"
 python-dotenv = ">=1.0"
 bcrypt = ">=4.0"
-fastapi-mcp = ">=0.4.0, <0.5"
+# Databricks is the only datastore: SQLAlchemy 2.0 + the (synchronous)
+# Databricks dialect, with Alembic for migrations.
+databricks-sqlalchemy = ">=2.0, <3"
+sqlalchemy = ">=2.0"
+alembic = ">=1.13"

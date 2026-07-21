@@ -22,7 +22,8 @@ class UserUpdate(BaseModel):
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    #: UUID string — Databricks has no sequences, so ids are generated client-side.
+    id: str
     username: str
     email: EmailStr
     full_name: str | None

@@ -1,7 +1,7 @@
 """Loguru configuration and stdlib-logging interception.
 
 Call :func:`configure_logging` once at startup. It routes stdlib logging
-(uvicorn, tortoise, etc.) through loguru so everything shares one format.
+(uvicorn, sqlalchemy, etc.) through loguru so everything shares one format.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def configure_logging() -> None:
     )
 
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
-    for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "tortoise", "aerich"):
+    for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "sqlalchemy", "alembic"):
         std = logging.getLogger(name)
         std.handlers = [InterceptHandler()]
         std.propagate = False
