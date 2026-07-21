@@ -42,6 +42,15 @@ class TimestampedModel(Base):
     __abstract__ = True
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+
+    def __init__(self, **kwargs: object) -> None:
+        # ``default=`` above is a *flush-time* column default, so obj.id would
+        # be None until the INSERT. Assigning at construction makes the id
+        # usable immediately -- for correlating logs, building URLs, or
+        # referencing the row before the unit of work commits. The column
+        # default stays as the safety net for bulk/Core inserts.
+        kwargs.setdefault("id", new_id())
+        super().__init__(**kwargs)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP, default=utcnow, nullable=False
     )
