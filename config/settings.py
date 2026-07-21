@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     # ``AppConfig`` in its ``apps.py``. Order matters for router mounting.
     INSTALLED_APPS: list[str] = [
         "apps.users",
+        "apps.audit_log",
     ]
 
     # --- Database (Databricks via SQLAlchemy) ---------------------------
