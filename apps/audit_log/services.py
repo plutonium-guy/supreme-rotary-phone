@@ -33,6 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from apps.audit_log.models import AuditLog, ProcessStatus
+from apps.audit_log.schemas import AuditLogCreate, AuditLogUpdate
 from core.db import run_db
 
 
@@ -150,10 +151,54 @@ async def audit_run(**kwargs: Any) -> AsyncIterator[RunHandle]:
 
 
 # --------------------------------------------------------------------------- #
-# Queries
+# CRUD
 # --------------------------------------------------------------------------- #
+async def create_entry(data: AuditLogCreate) -> AuditLog:
+    """Create an audit entry from an API payload.
+
+    ``process_id`` is intentionally not unique — a run that is retried should
+    produce several rows under the same id, and Delta could not enforce
+    uniqueness anyway.
+    """
+
+    def _work(session: Session) -> AuditLog:
+        row = AuditLog(**data.model_dump())
+        session.add(row)
+        return row
+
+    return await run_db(_work)
+
+
 async def get_entry(entry_id: str) -> AuditLog | None:
     return await run_db(lambda s: s.get(AuditLog, entry_id))
+
+
+async def update_entry(entry_id: str, data: AuditLogUpdate) -> AuditLog | None:
+    """Apply a partial update. Returns ``None`` if the entry does not exist."""
+    payload = data.model_dump(exclude_unset=True)
+
+    def _work(session: Session) -> AuditLog | None:
+        row = session.get(AuditLog, entry_id)
+        if row is None:
+            return None
+        for key, value in payload.items():
+            setattr(row, key, value)
+        return row
+
+    return await run_db(_work)
+
+
+async def delete_entry(entry_id: str) -> bool:
+    """Delete an entry. Returns ``False`` if it did not exist."""
+
+    def _work(session: Session) -> bool:
+        row = session.get(AuditLog, entry_id)
+        if row is None:
+            return False
+        session.delete(row)
+        return True
+
+    return await run_db(_work)
 
 
 async def list_entries(

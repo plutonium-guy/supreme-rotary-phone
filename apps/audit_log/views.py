@@ -1,19 +1,39 @@
 """Routes for the audit_log app (auto-mounted at /api/audit_log).
 
-Read-only. Audit rows are written by the processing code via
-``services.audit_run``, never over HTTP — an audit trail an API client can
-forge is not an audit trail.
+Full CRUD over audit entries.
+
+Note that the normal way to produce a row is ``services.audit_run`` from inside
+the processing code, not these endpoints — it captures timing and exceptions
+automatically. The write endpoints exist for backfills, corrections and
+integrations that record their own runs. See the module note in ``services``
+about keeping the trail trustworthy.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from apps.audit_log import services
 from apps.audit_log.models import ProcessStatus
-from apps.audit_log.schemas import AuditLogOut, AuditLogSummary
+from apps.audit_log.schemas import (
+    AuditLogCreate,
+    AuditLogOut,
+    AuditLogSummary,
+    AuditLogUpdate,
+)
 
 router = APIRouter()
+
+
+@router.post(
+    "",
+    response_model=AuditLogOut,
+    status_code=status.HTTP_201_CREATED,
+    operation_id="audit_log_create",
+)
+async def create_entry(payload: AuditLogCreate) -> AuditLogOut:
+    entry = await services.create_entry(payload)
+    return AuditLogOut.model_validate(entry)
 
 
 @router.get("", response_model=list[AuditLogSummary], operation_id="audit_log_list")
@@ -40,3 +60,23 @@ async def retrieve_entry(entry_id: str) -> AuditLogOut:
     if entry is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Audit entry not found")
     return AuditLogOut.model_validate(entry)
+
+
+@router.patch("/{entry_id}", response_model=AuditLogOut, operation_id="audit_log_update")
+async def update_entry(entry_id: str, payload: AuditLogUpdate) -> AuditLogOut:
+    entry = await services.update_entry(entry_id, payload)
+    if entry is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Audit entry not found")
+    return AuditLogOut.model_validate(entry)
+
+
+@router.delete(
+    "/{entry_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    operation_id="audit_log_delete",
+)
+async def delete_entry(entry_id: str) -> Response:
+    if not await services.delete_entry(entry_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Audit entry not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
