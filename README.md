@@ -60,22 +60,121 @@ admin-configuration time.
 
 ```bash
 pixi install
-cp .env.example .env          # then fill in your Databricks credentials
+cp .env.example .env          # then fill it in — see Databricks setup below
 
 pixi run dbshell              # verify connectivity first
 pixi run initdb               # create tables in the configured catalog/schema
 pixi run runserver            # http://127.0.0.1:8000  (docs at /docs)
 ```
 
-`.env` needs at minimum, from your SQL warehouse's *Connection details* tab:
+## Databricks setup
+
+You need four things: a **SQL warehouse** to execute queries, a **token** to
+authenticate, a **catalog + schema** to hold the tables, and **grants** on that
+schema. Roughly ten minutes end to end.
+
+### 1. Get a SQL warehouse
+
+In the workspace sidebar switch to **SQL**, open **SQL Warehouses**, and either
+pick an existing warehouse or **Create SQL warehouse**.
+
+Prefer a **Serverless** warehouse if your workspace offers one. Warehouses stop
+when idle and must resume on the next query; serverless resumes in seconds,
+while classic/pro can take a few minutes. Since this app's *first* query
+happens during startup, a cold classic warehouse makes it look hung.
+
+Open the warehouse → **Connection details** tab. Copy:
+
+| Field on that tab | `.env` key |
+|---|---|
+| Server hostname | `DATABRICKS_SERVER_HOSTNAME` |
+| HTTP path       | `DATABRICKS_HTTP_PATH` |
+
+The hostname goes in **without** the `https://` prefix.
+
+### 2. Create an access token
+
+Top-right avatar → **Settings** → **Developer** → **Access tokens** →
+**Manage** → **Generate new token**. Copy it immediately; it is shown once.
+That value is `DATABRICKS_TOKEN`.
+
+Tokens inherit *your* permissions and expire. For anything beyond local
+development, authenticate as a **service principal** with OAuth (M2M) instead
+and give it only the grants in step 4 — a personal token in a deployed service
+means the service loses access when you do.
+
+### 3. Pick a catalog and schema
+
+Unity Catalog names tables `catalog.schema.table`. Give the app its own schema
+rather than dropping tables into `main.default`. In the SQL editor:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS main.fastapi_app;
+```
+
+Then set `DATABRICKS_CATALOG=main` and `DATABRICKS_SCHEMA=fastapi_app`.
+
+### 4. Grant permissions
+
+The identity from step 2 needs enough to create and use tables. As a
+catalog/schema owner or metastore admin:
+
+```sql
+GRANT USE CATALOG ON CATALOG main TO `you@example.com`;
+GRANT USE SCHEMA, CREATE TABLE, SELECT, MODIFY
+  ON SCHEMA main.fastapi_app TO `you@example.com`;
+```
+
+Substitute the service principal's application ID for the email when using
+OAuth. `CREATE TABLE` is what `init-db` and Alembic need; `MODIFY` covers
+INSERT/UPDATE/DELETE.
+
+### 5. Fill in `.env` and verify
 
 ```
-DATABRICKS_SERVER_HOSTNAME=dbc-xxxx.cloud.databricks.com
-DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/xxxxxxxx
+DATABRICKS_SERVER_HOSTNAME=dbc-xxxxxxxx-xxxx.cloud.databricks.com
+DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/xxxxxxxxxxxxxxxx
 DATABRICKS_TOKEN=dapi...
 DATABRICKS_CATALOG=main
-DATABRICKS_SCHEMA=default
+DATABRICKS_SCHEMA=fastapi_app
 ```
+
+```bash
+pixi run dbshell
+```
+
+This is the first thing that touches the warehouse, so run it before the
+server. On success it prints the catalog, schema, authenticated user and the
+tables it can see. Then:
+
+```bash
+pixi run initdb      # CREATE TABLE ... USING DELTA for every model
+pixi run runserver
+```
+
+If the credentials are absent or incomplete the app refuses to start with an
+explicit message naming the missing keys — there is no silent fallback.
+
+### Authenticating another way
+
+`DATABASE_URL` overrides the five settings above with a full SQLAlchemy URL,
+which is the escape hatch for OAuth, custom connector arguments, or anything
+the five fields don't express:
+
+```
+DATABASE_URL=databricks://token:dapi...@host?http_path=/sql/1.0/warehouses/xxx&catalog=main&schema=fastapi_app
+```
+
+### Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| First query hangs 1–5 min, then succeeds | Warehouse was stopped and is resuming. Use serverless, or pre-start it |
+| `Databricks is not configured — set ...` | `.env` missing keys; the message names them |
+| 403 / `PERMISSION_DENIED` on `initdb` | Missing `CREATE TABLE` on the schema (step 4) |
+| `TABLE_OR_VIEW_NOT_FOUND` | `initdb` not run, or `DATABRICKS_SCHEMA` points somewhere else |
+| `Invalid access token` | Token expired or was copied truncated — regenerate |
+| Schema doesn't exist | `CREATE SCHEMA` from step 3 — the app creates tables, never schemas |
 
 ## Living with Databricks
 
@@ -123,7 +222,7 @@ costs ~0.2–2s, so splitting one operation across several calls multiplies that
 
 Expect admin pages to take a beat: each list view is several warehouse queries.
 
-### Admin dashboard
+## Admin dashboard
 
 Start the server and open **http://127.0.0.1:8000/admin**, log in with
 **`admin` / `admin`**.
