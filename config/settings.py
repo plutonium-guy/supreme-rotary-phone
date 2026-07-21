@@ -112,6 +112,13 @@ class Settings(BaseSettings):
     def admin_secret(self) -> str:
         return self.ADMIN_SECRET_KEY or self.SECRET_KEY
 
+    # --- Audit log ------------------------------------------------------
+    # Whether audit entries may be edited or deleted over the API. Off by
+    # default: an audit trail that can be rewritten through a public endpoint
+    # is hard to defend to an auditor, and a gate that defaults to open is one
+    # nobody remembers to close. Creating and reading entries is unaffected.
+    AUDIT_LOG_ALLOW_MUTATION: bool = False
+
     # --- Logging --------------------------------------------------------
     LOG_LEVEL: str = "DEBUG"
     LOG_DIR: Path = BASE_DIR / "logs"

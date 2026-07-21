@@ -256,6 +256,43 @@ Create additional superusers from the CLI any time:
 python manage.py createadmin alice s3cretpw --email alice@x.com
 ```
 
+## Audit log
+
+`apps/audit_log` records one row per processing run: what ran, the lease term
+being processed, how it ended, and enough failure detail (exception type,
+message, traceback) to diagnose it without re-running.
+
+The intended entry point is the `audit_run` context manager, not the HTTP API —
+it captures timing and exceptions for you and re-raises, so auditing never
+swallows an error:
+
+```python
+from apps.audit_log.services import audit_run
+
+async with audit_run(process_id="RUN-001", lease_id="LEASE-42",
+                     lease_term_months=36, start_date=..., end_date=...) as run:
+    result = do_the_work()
+    run.succeed(output_state=result, records_processed=len(result))
+```
+
+It writes twice — once to persist the `RUNNING` row, once to finalise — so a
+crash mid-run leaves evidence rather than nothing.
+
+### Mutation is gated
+
+`/api/audit_log` exposes full CRUD, but **`PATCH` and `DELETE` return `405`
+unless `AUDIT_LOG_ALLOW_MUTATION=true`**. The default is off: an audit trail
+that can be rewritten through an endpoint is hard to defend to an auditor, and
+a gate defaulting to open is one nobody remembers to close.
+
+`POST` and the read endpoints are never gated, so the table is append-only out
+of the box. Turn mutation on only where you need backfills or corrections, and
+prefer leaving it off in production.
+
+`process_id` is not unique — a retried run should produce several rows under
+one id — and it cannot be changed by `PATCH`, since re-pointing an audit row at
+a different run would falsify the trail.
+
 ## Adding a model, end to end
 
 A worked example: a `blog` app with a `Post` model, from scaffold to live
